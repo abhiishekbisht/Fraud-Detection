@@ -62,6 +62,10 @@ def preprocess_dataset(
     X_train_res_arr, y_train_res = smote.fit_resample(X_train_scaled, y_train)
     
     # Ensure resampled features are returned as a DataFrame with correct columns
-    X_train_res = pd.DataFrame(X_train_res_arr, columns=feature_cols)
+    if isinstance(X_train_res_arr, pd.DataFrame):
+        X_train_res = X_train_res_arr.copy()
+        X_train_res.columns = feature_cols
+    else:
+        X_train_res = pd.DataFrame(X_train_res_arr, columns=feature_cols)
 
     return X_train_res, y_train_res, X_test_scaled, y_test

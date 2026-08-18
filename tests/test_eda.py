@@ -109,84 +109,88 @@ def test_eda_api_endpoint():
     """
     Tests the FastAPI GET /eda/{dataset_id} endpoint.
     """
-    from app.services.database import save_cleaning_report, save_dataset_metadata
+    from app.services.database import save_cleaning_report, save_dataset_metadata, delete_dataset_metadata
     
     dataset_id = "test_creditcard_dataset"
     df = generate_synthetic_dataset(n_samples=200, fraud_ratio=0.1)
     
-    # Save a mock dataset record to datasets table
-    save_dataset_metadata(dataset_id, "mock_creditcard.csv", 200, "valid")
-    
-    # Save a mock cleaning report to SQLite to satisfy the "must be cleaned" check
-    save_cleaning_report(
-        dataset_id=dataset_id,
-        rows_before=200,
-        rows_after=200,
-        duplicates_removed=0,
-        missing_value_summary={},
-        outliers_flagged=0
-    )
-    
-    # Register dataset directly into data manager
-    data_manager.register_dataset(dataset_id, df)
-    
-    # Query endpoint
-    response = client.get(f"/eda/{dataset_id}")
-    assert response.status_code == 200
-    
-    data = response.json()
-    
-    # Validate the four sections exist
-    assert "class_balance" in data
-    assert "amount_stats" in data
-    assert "correlation_matrix" in data
-    assert "top_features" in data
-    
-    # Validate structure and sanity of class balance
-    assert data["class_balance"]["counts"]["legit"] == 180
-    assert data["class_balance"]["counts"]["fraud"] == 20
-    assert data["class_balance"]["percentages"]["fraud"] == 10.0
-    
-    # Validate structure of amount stats
-    assert "mean" in data["amount_stats"]["legit"]
-    assert "percentiles" in data["amount_stats"]["legit"]
-    assert data["amount_stats"]["fraud"]["mean"] > data["amount_stats"]["legit"]["mean"]
-    
-    # Validate correlation matrix column list
-    assert "Class" in data["correlation_matrix"]
-    assert "Amount" in data["correlation_matrix"]
-    
-    # Validate top features list
-    assert len(data["top_features"]) == 10
-    assert data["top_features"][0]["feature"] == "V17"
-    assert data["top_features"][0]["mean_difference"] > 7.0
-    
-    # Clean up database and data manager cache
-    data_manager.delete_dataset(dataset_id)
+    try:
+        # Save a mock dataset record to datasets table
+        save_dataset_metadata(dataset_id, "mock_creditcard.csv", 200, "valid")
+        
+        # Save a mock cleaning report to SQLite to satisfy the "must be cleaned" check
+        save_cleaning_report(
+            dataset_id=dataset_id,
+            rows_before=200,
+            rows_after=200,
+            duplicates_removed=0,
+            missing_value_summary={},
+            outliers_flagged=0
+        )
+        
+        # Register dataset directly into data manager
+        data_manager.register_dataset(dataset_id, df)
+        
+        # Query endpoint
+        response = client.get(f"/eda/{dataset_id}")
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Validate the four sections exist
+        assert "class_balance" in data
+        assert "amount_stats" in data
+        assert "correlation_matrix" in data
+        assert "top_features" in data
+        
+        # Validate structure and sanity of class balance
+        assert data["class_balance"]["counts"]["legit"] == 180
+        assert data["class_balance"]["counts"]["fraud"] == 20
+        assert data["class_balance"]["percentages"]["fraud"] == 10.0
+        
+        # Validate structure of amount stats
+        assert "mean" in data["amount_stats"]["legit"]
+        assert "percentiles" in data["amount_stats"]["legit"]
+        assert data["amount_stats"]["fraud"]["mean"] > data["amount_stats"]["legit"]["mean"]
+        
+        # Validate correlation matrix column list
+        assert "Class" in data["correlation_matrix"]
+        assert "Amount" in data["correlation_matrix"]
+        
+        # Validate top features list
+        assert len(data["top_features"]) == 10
+        assert data["top_features"][0]["feature"] == "V17"
+        assert data["top_features"][0]["mean_difference"] > 7.0
+    finally:
+        # Clean up database and data manager cache
+        delete_dataset_metadata(dataset_id)
+        data_manager.delete_dataset(dataset_id)
 
 
 def test_eda_api_endpoint_uncleaned():
     """
     Tests GET /eda/{dataset_id} on an uncleaned dataset. Should yield a 400 Bad Request error.
     """
-    from app.services.database import save_dataset_metadata
+    from app.services.database import save_dataset_metadata, delete_dataset_metadata
     
     dataset_id = "uncleaned_dataset"
     df = generate_synthetic_dataset(n_samples=100, fraud_ratio=0.1)
     
-    # Save a mock dataset record to datasets table
-    save_dataset_metadata(dataset_id, "mock_uncleaned.csv", 100, "valid")
-    
-    # Register dataset directly, but do NOT write a cleaning report to SQLite
-    data_manager.register_dataset(dataset_id, df)
-    
-    # Query eda endpoint
-    response = client.get(f"/eda/{dataset_id}")
-    assert response.status_code == 400
-    assert "has not been cleaned" in response.json()["detail"].lower()
-    
-    # Clean up
-    data_manager.delete_dataset(dataset_id)
+    try:
+        # Save a mock dataset record to datasets table
+        save_dataset_metadata(dataset_id, "mock_uncleaned.csv", 100, "valid")
+        
+        # Register dataset directly, but do NOT write a cleaning report to SQLite
+        data_manager.register_dataset(dataset_id, df)
+        
+        # Query eda endpoint
+        response = client.get(f"/eda/{dataset_id}")
+        assert response.status_code == 400
+        assert "has not been cleaned" in response.json()["detail"].lower()
+    finally:
+        # Clean up
+        delete_dataset_metadata(dataset_id)
+        data_manager.delete_dataset(dataset_id)
 
 
 def test_eda_api_endpoint_not_found():

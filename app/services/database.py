@@ -119,3 +119,15 @@ def dataset_exists(dataset_id: str) -> bool:
     row = cursor.fetchone()
     conn.close()
     return row is not None
+
+def delete_dataset_metadata(dataset_id: str) -> None:
+    """
+    Deletes dataset metadata and cleaning reports from the SQLite database.
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
+    cursor.execute("DELETE FROM cleaning_reports WHERE dataset_id = ?", (dataset_id,))
+    conn.commit()
+    conn.close()
