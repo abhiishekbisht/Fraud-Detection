@@ -60,9 +60,25 @@ def init_db():
             model_path TEXT NOT NULL,
             scaler_path TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0,
             FOREIGN KEY(job_id) REFERENCES training_jobs(id)
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id TEXT PRIMARY KEY,
+            model_id TEXT NOT NULL,
+            prediction_type TEXT NOT NULL,
+            input_summary TEXT NOT NULL,
+            output TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY(model_id) REFERENCES models(id)
+        )
+    """)
+    try:
+        cursor.execute("ALTER TABLE models ADD COLUMN is_active INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -151,11 +167,12 @@ def dataset_exists(dataset_id: str) -> bool:
 
 def delete_dataset_metadata(dataset_id: str) -> None:
     """
-    Deletes dataset metadata, cleaning reports, models, and training jobs from the SQLite database.
+    Deletes dataset metadata, cleaning reports, models, training jobs, and prediction history logs from the SQLite database.
     """
     init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    cursor.execute("DELETE FROM predictions WHERE model_id IN (SELECT id FROM models WHERE dataset_id = ?)", (dataset_id,))
     cursor.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
     cursor.execute("DELETE FROM cleaning_reports WHERE dataset_id = ?", (dataset_id,))
     cursor.execute("DELETE FROM models WHERE dataset_id = ?", (dataset_id,))
@@ -212,8 +229,8 @@ def save_trained_model(
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
     cursor.execute("""
         INSERT INTO models (
-            id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         model_id,
         job_id,
@@ -227,7 +244,8 @@ def save_trained_model(
         json.dumps(metrics["confusion_matrix"]),
         model_path,
         scaler_path,
-        now_str
+        now_str,
+        0
     ))
     conn.commit()
     conn.close()
@@ -259,6 +277,7 @@ def get_training_job(job_id: str) -> Optional[Dict[str, Any]]:
         for mr in model_rows:
             m_dict = dict(mr)
             m_dict["confusion_matrix"] = json.loads(m_dict["confusion_matrix"])
+            m_dict["is_active"] = bool(m_dict["is_active"])
             models_list.append(m_dict)
         job_dict["models"] = models_list
     else:
@@ -266,3 +285,104 @@ def get_training_job(job_id: str) -> Optional[Dict[str, Any]]:
         
     conn.close()
     return job_dict
+
+def list_all_models() -> list:
+    """
+    Returns all trained models sorted by pr_auc descending.
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
+        FROM models
+        ORDER BY pr_auc DESC
+    """)
+    rows = cursor.fetchall()
+    models_list = []
+    for r in rows:
+        m_dict = dict(r)
+        m_dict["confusion_matrix"] = json.loads(m_dict["confusion_matrix"])
+        m_dict["is_active"] = bool(m_dict["is_active"])
+        models_list.append(m_dict)
+    conn.close()
+    return models_list
+
+def activate_model(model_id: str) -> bool:
+    """
+    Sets is_active=1 for the specified model_id and is_active=0 for all other models.
+    Returns True if model was activated, False if model_id was not found.
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Check if model exists
+    cursor.execute("SELECT 1 FROM models WHERE id = ?", (model_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        return False
+        
+    # Deactivate all models
+    cursor.execute("UPDATE models SET is_active = 0")
+    # Activate the target model
+    cursor.execute("UPDATE models SET is_active = 1 WHERE id = ?", (model_id,))
+    
+    conn.commit()
+    conn.close()
+    return True
+
+def get_active_model() -> Optional[Dict[str, Any]]:
+    """
+    Retrieves the currently active model run details.
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
+        FROM models
+        WHERE is_active = 1
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    m_dict = dict(row)
+    m_dict["confusion_matrix"] = json.loads(m_dict["confusion_matrix"])
+    m_dict["is_active"] = bool(m_dict["is_active"])
+    return m_dict
+
+def save_prediction(
+    model_id: str,
+    prediction_type: str,
+    input_summary: Dict[str, Any],
+    output: Dict[str, Any]
+) -> str:
+    """
+    Logs a prediction run to the SQLite predictions table.
+    Returns the generated prediction_id.
+    """
+    import uuid
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    prediction_id = str(uuid.uuid4())
+    now_str = datetime.datetime.now(datetime.UTC).isoformat()
+    cursor.execute("""
+        INSERT INTO predictions (id, model_id, prediction_type, input_summary, output, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        prediction_id,
+        model_id,
+        prediction_type,
+        json.dumps(input_summary),
+        json.dumps(output),
+        now_str
+    ))
+    conn.commit()
+    conn.close()
+    return prediction_id
