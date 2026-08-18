@@ -274,8 +274,8 @@
                             <tr class="hover:bg-zinc-800/30">
                                 <td class="p-3 text-zinc-500 font-bold">${idx + 1}</td>
                                 <td class="p-3 font-mono font-bold text-zinc-200">${f.feature}</td>
-                                <td class="p-3 text-right font-mono text-zinc-400">${f.legit_mean.toFixed(4)}</td>
-                                <td class="p-3 text-right font-mono text-zinc-400">${f.fraud_mean.toFixed(4)}</td>
+                                <td class="p-3 text-right font-mono text-zinc-400">${f.mean_legit.toFixed(4)}</td>
+                                <td class="p-3 text-right font-mono text-zinc-400">${f.mean_fraud.toFixed(4)}</td>
                                 <td class="p-3 text-right font-mono font-bold ${f.mean_difference >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
                                     ${sign}${f.mean_difference.toFixed(4)}
                                 </td>
