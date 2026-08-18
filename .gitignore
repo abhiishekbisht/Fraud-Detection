@@ -71,6 +71,8 @@ active_venv/
 
 # Project specific data directories
 data/
+models/
+
 
 # OS files
 .DS_Store

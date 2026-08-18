@@ -9,3 +9,4 @@ shap
 python-multipart
 pytest
 httpx
+jinja2

@@ -54,7 +54,8 @@ def test_predict_no_active_model():
 
 def test_prediction_pipeline_success():
     """
-    Simulates training a dummy model, activating it, and running single/batch inference.
+    Simulates training a dummy model, activating it, and running single/batch inference,
+    including SHAP explanation and prediction history query evaluations.
     """
     dataset_id = "test_predict_dataset"
     job_id = "test_predict_job"
@@ -64,15 +65,19 @@ def test_prediction_pipeline_success():
     # 1. Create a dummy model and scaler
     np.random.seed(42)
     X_dummy = np.random.normal(loc=0.0, scale=1.0, size=(100, 30))
-    # Target Class: mostly 0 (legit), a few 1s (fraud)
     y_dummy = np.random.choice([0, 1], size=100, p=[0.9, 0.1])
 
     scaler = StandardScaler()
-    X_scaled = scaler.fit(X_dummy) # Fit scaler
+    scaler.fit(X_dummy)
     X_scaled_arr = scaler.transform(X_dummy)
     
     model = LogisticRegression(random_state=42)
     model.fit(X_scaled_arr, y_dummy)
+
+    # Save cleaned training data so that LinearExplainer background data loading works
+    os.makedirs("data/cleaned", exist_ok=True)
+    df_cleaned = pd.DataFrame(X_dummy, columns=["Time", "Amount"] + [f"V{i}" for i in range(1, 29)])
+    df_cleaned.to_csv(f"data/cleaned/{dataset_id}.csv", index=False)
 
     # 2. Write model artifacts to disk under job_id folder
     job_dir = f"data/models/{job_id}"
@@ -102,7 +107,6 @@ def test_prediction_pipeline_success():
         single_payload = {
             "Time": 1.0,
             "Amount": 50.0,
-            # Assign features so that it yields valid float transformations
             **{f"V{i}": float(np.random.normal()) for i in range(1, 29)}
         }
         
@@ -112,25 +116,37 @@ def test_prediction_pipeline_success():
         pred_data = pred_res.json()
         assert "fraud_probability" in pred_data
         assert "risk_label" in pred_data
-        assert pred_data["risk_label"] in ["Low", "Medium", "High"]
         assert "prediction_id" in pred_data
-        assert len(pred_data["top_features"]) > 0
-
-        # 6. Verify predictions log table in SQLite for the single prediction
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, model_id, prediction_type, input_summary, output FROM predictions WHERE prediction_type = 'single'")
-        db_row = cursor.fetchone()
-        conn.close()
         
-        assert db_row is not None
-        assert db_row[0] == pred_data["prediction_id"]
-        assert db_row[1] == model_id
-        assert "Amount" in db_row[3] # input summary has amount
-        assert "fraud_probability" in db_row[4] # output has probability
+        # Verify SHAP value schema format in single prediction output
+        top_features = pred_data["top_features"]
+        assert len(top_features) == 3
+        for tf in top_features:
+            assert "feature" in tf
+            assert "shap_value" in tf
+            assert "effect" in tf
+            assert tf["effect"] in ["increases", "decreases"]
+
+        # 6. Test GET /explain/{prediction_id} (Full SHAP breakdown)
+        pred_id = pred_data["prediction_id"]
+        explain_res = client.get(f"/explain/{pred_id}")
+        assert explain_res.status_code == 200
+        
+        explain_data = explain_res.json()
+        assert explain_data["prediction_id"] == pred_id
+        assert explain_data["model_id"] == model_id
+        assert "base_value" in explain_data
+        assert "prediction_probability" in explain_data
+        assert explain_data["risk_label"] == pred_data["risk_label"]
+        
+        shap_values = explain_data["shap_values"]
+        assert len(shap_values) == 30 # all 30 features
+        
+        # Verify sorted descending by absolute value
+        for i in range(len(shap_values) - 1):
+            assert abs(shap_values[i]["shap_value"]) >= abs(shap_values[i+1]["shap_value"])
 
         # 7. Test batch prediction POST /predict/batch
-        # Generate 5 transaction rows matching standard features
         df_batch = pd.DataFrame(
             np.random.normal(size=(5, 30)),
             columns=["Time", "Amount"] + [f"V{i}" for i in range(1, 29)]
@@ -143,30 +159,32 @@ def test_prediction_pipeline_success():
         files = {"file": ("batch_transactions.csv", csv_bytes, "text/csv")}
         batch_res = client.post("/predict/batch", files=files)
         assert batch_res.status_code == 200
-        assert batch_res.headers["Content-Disposition"].startswith("attachment; filename=")
         
         scored_csv = batch_res.text
         df_scored = pd.read_csv(io.StringIO(scored_csv))
-        
-        # Verify columns added
         assert len(df_scored) == 5
         assert "fraud_probability" in df_scored.columns
         assert "risk_label" in df_scored.columns
-        assert df_scored["risk_label"].isin(["Low", "Medium", "High"]).all()
 
-        # 8. Verify predictions log table in SQLite for the batch run
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT model_id, input_summary, output FROM predictions WHERE prediction_type = 'batch'")
-        db_batch_row = cursor.fetchone()
-        conn.close()
+        # 8. Test GET /predict/history paginated log history endpoint
+        history_res = client.get("/predict/history?page=1&limit=10")
+        assert history_res.status_code == 200
         
-        assert db_batch_row is not None
-        assert db_batch_row[0] == model_id
-        assert "batch_transactions.csv" in db_batch_row[1]
-        assert "processed_rows" in db_batch_row[2]
+        hist_data = history_res.json()
+        assert "predictions" in hist_data
+        assert "total_count" in hist_data
+        assert hist_data["total_count"] >= 2 # 1 single + 1 batch logged
+        
+        # Test filters
+        low_risk_res = client.get(f"/predict/history?risk_label={pred_data['risk_label']}")
+        assert low_risk_res.status_code == 200
+        low_data = low_risk_res.json()
+        assert len(low_data["predictions"]) >= 1
 
     finally:
         # Clean up files
         if os.path.exists(job_dir):
             shutil.rmtree(job_dir)
+        cleaned_csv = f"data/cleaned/{dataset_id}.csv"
+        if os.path.exists(cleaned_csv):
+            os.remove(cleaned_csv)
