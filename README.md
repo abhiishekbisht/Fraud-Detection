@@ -1,152 +1,90 @@
-# FraudLens - Transaction Fraud Detection Platform
+# FraudLens - Automated Transaction Fraud Detection Platform
 
-FraudLens is an end-to-end automated machine learning platform designed to ingestion, pre-process, evaluate, and explain transaction credit card fraud data. 
+FraudLens is an end-to-end machine learning platform designed to ingest, clean, evaluate, train, and run real-time inference on credit card fraud datasets.
 
-Built using a high-performance **FastAPI** backend integrated with an interactive **Jinja2 + Tailwind CSS + Chart.js** frontend dashboard, the platform enables analysts to upload transaction batches, run cleaning pipelines, analyze data via EDA charts, trigger asynchronous ML training, activate model runs, audit model predictions, and visualize feature contribution impacts with SHAP Tree/Linear explainers.
+Built with a high-performance **FastAPI** Python backend integrated with a modern **React + Vite + Tailwind CSS** frontend pipeline dashboard.
 
 ---
 
 ## Key Features
 
-1. **Upload & Clean Pipeline:** Accepts credit card transaction CSV files (up to 200MB), validates schemas, removes duplicate rows, flags outliers in transaction amounts using IQR, and handles missing values.
-2. **Exploratory Data Analysis (EDA) Dashboard:** Dynamic visualization of class balance distributions (doughnut charts), amount distributions grouped by class (min, max, mean, percentiles), correlation matrix heatmaps, and top 10 features ranked by absolute mean difference.
-3. **Model Training Studio:** Queue asynchronous training jobs (Logistic Regression, Random Forest, XGBoost fallbacks) utilizing stratified splits and SMOTE. Inspect comparative model evaluation tables (Precision, Recall, F1, ROC-AUC, PR-AUC).
-4. **Inference Center:** Run predictions on individual transactions (autofilled with template legit/fraud profiles) showing color-coded risk levels (Low/Medium/High) and real-time SHAP feature contribution charts, or execute batch scoring with download-ready scored CSV output files.
-5. **Prediction Logs Audit:** Paginated lookup of all historical predictions with page controls and risk label / date range filters. Offers a sliding SHAP breakdown panel detailing each feature's contribution towards model risk.
+1. **Phase 01 · Upload & Validate:** Accepts transaction CSV files (up to 200MB), validates schemas, handles null values, and sets up dataset isolation automatically.
+2. **Phase 02 · Exploratory Analysis (EDA):** Statistical profiling of transaction rows, class imbalance metrics, missing value distributions, and top discriminative features.
+3. **Phase 03 · Model Training Studio:** Select ML algorithms (XGBoost, Random Forest, Logistic Regression), balance classes with SMOTE, execute training pipelines, and evaluate precision, recall, F1 score, and AUC-ROC metrics.
+4. **Phase 04 · Fraud Inference & Batch Scoring:** Single transaction risk assessment with real-time risk scores and SHAP feature contributions, plus batch CSV file scoring with download-ready outputs.
 
 ---
 
-## Directory Structure
+## Repository Structure
 
 ```
 .
-├── app/
-│   ├── main.py              # Application entrypoint with CORS & lifespan initialization
-│   ├── routers/             # API & Page HTML routers
-│   │   ├── upload.py        # Dataset CSV upload endpoint
-│   │   ├── cleaning.py      # Pre-cleaning process endpoints
-│   │   ├── eda.py           # Statistical calculation outputs
-│   │   ├── train.py         # Asynchronous training loops
-│   │   ├── models.py        # Model list & activation handlers
-│   │   ├── predict.py       # Single, batch, SHAP, and history logs
-│   │   └── pages.py         # HTML page rendering routers (Jinja2 templates)
-│   ├── services/            # Business & DB query services
-│   │   └── database.py      # SQLite connection context managers (WAL mode)
-│   ├── models/              # Pydantic validation schemas
-│   ├── ml/                  # Machine learning preprocessing and training helpers
-│   └── templates/           # Jinja2 template views (Tailwind + Chart.js)
-│       ├── base.html        # Shell template layout
-│       ├── upload.html      # CSV upload & cleaning UI
-│       ├── eda.html         # Statistical analysis dashboards
-│       ├── train.html       # Model training studio
-│       ├── predict.html     # Real-time transaction inference
-│       └── history.html     # Audited prediction history logs
-├── tests/                   # 23-case test suites (covering ML logic, DB, & pages)
-├── Dockerfile               # Production container image file
-├── requirements.txt         # Project package requirements
-├── .env.example             # Configuration variables template
-└── README.md                # This setup guide
+├── app/                      # FastAPI Python Backend
+│   ├── main.py               # Main application entrypoint & API router mounting
+│   ├── routers/              # Endpoint controllers
+│   │   ├── upload.py         # CSV dataset upload & list endpoints
+│   │   ├── eda.py            # Statistical profiling & EDA metrics
+│   │   ├── train.py          # Model training pipeline endpoints
+│   │   ├── predict.py        # Single & batch fraud inference
+│   │   └── downloads.py      # Artifact exports & downloads
+│   ├── services/             # Business logic & database services
+│   └── models/               # Pydantic data models
+│
+├── frontend/                 # React + Vite + Tailwind CSS Frontend
+│   ├── src/
+│   │   ├── components/       # Stepper, PhaseShell, Navbar components
+│   │   ├── pages/            # UploadPage, EDADashboard, TrainDashboard, PredictDashboard
+│   │   └── lib/              # Styling utilities
+│   ├── package.json          # Node dependencies
+│   └── vite.config.ts        # Vite configuration & backend proxy setup
+│
+├── tests/                    # Backend pytest test suite
+├── Dockerfile                # Production container deployment file
+├── requirements.txt          # Python dependencies
+└── README.md                 # Project documentation
 ```
 
 ---
 
 ## Local Setup Instructions
 
-### 1. Prerequisites
-Ensure you have **Python 3.11+** installed on your system.
-
-### 2. Create and Activate Virtual Environment
-Clone the repository and run:
+### 1. Backend Setup (FastAPI)
 
 ```bash
-# Create the virtual environment
+# Create virtual environment
 python3 -m venv .venv
-
-# Activate it (macOS / Linux)
 source .venv/bin/activate
 
-# Activate it (Windows PowerShell)
-.venv\Scripts\Activate.ps1
-```
-
-### 3. Install Dependencies
-```bash
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Start FastAPI server (runs on port 8000)
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Configuration
-Copy the sample environment variables:
+### 2. Frontend Setup (React + Vite)
+
 ```bash
-cp .env.example .env
+cd frontend
+
+# Install Node dependencies
+npm install
+
+# Start Vite dev server (runs on port 3000)
+npm run dev
 ```
 
-### 5. Running locally
-```bash
-uvicorn app.main:app --reload
-```
-Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser to view the interactive dashboard.
-*   Interactive API Documentation (Swagger): [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
-### 6. Running Tests
-```bash
-rm -rf data/raw/ data/cleaned/ && rm -f data/metadata.db data/metadata.db-wal data/metadata.db-shm
-PYTHONPATH=. pytest tests/ -v
-```
+Visit **`http://localhost:3000`** in your browser.
 
 ---
 
-## Running with Docker
+## Production Build
 
-To build and run the application locally inside a container:
+To build the static React SPA bundle for FastAPI static serving:
 
 ```bash
-# Build the image
-docker build -t fraudlens .
-
-# Run the container
-docker run -p 8000:8000 -e PORT=8000 fraudlens
+cd frontend
+npm run build
 ```
-Go to `http://localhost:8000` to interact with the containerized application.
 
----
-
-## Deployment Instructions
-
-### Render Deployment (Backend & Frontend)
-Render supports deploying containerized web apps directly:
-1. Push your code to your GitHub repository.
-2. Sign in to [Render](https://render.com) and click **New > Web Service**.
-3. Select your repository.
-4. Set the following configurations:
-   - **Runtime:** `Docker`
-   - **Branch:** `main` (or your active branch)
-5. Add environment variables under the **Environment** tab:
-   - `PORT`: `8000`
-6. Click **Deploy Web Service**.
-
-### Railway Deployment
-Railway offers quick container-based deployment:
-1. Log in to [Railway](https://railway.app).
-2. Click **New Project** and select **Deploy from GitHub repo**.
-3. Choose your repository.
-4. Click **Deploy Now**. Railway will automatically detect the `Dockerfile` and build/deploy the container.
-5. In the service settings, click **Generate Domain** to expose your service URL to the web.
-
----
-
-## Screenshot Placeholders
-
-### 1. Upload & Cleaning Pipeline
-`![Upload UI](docs/screenshots/upload_page.png)` *(Placeholder: Uploading datasets, viewing duplicate counts and column missing value reports.)*
-
-### 2. Statistical EDA Dashboard
-`![EDA Dashboard](docs/screenshots/eda_page.png)` *(Placeholder: Class balance pie chart, amount statistics tables, and correlation matrix heatmap.)*
-
-### 3. Training Control Studio
-`![Training Studio](docs/screenshots/train_page.png)` *(Placeholder: Asynchronous training status tracker, model metrics comparison table, and activation status buttons.)*
-
-### 4. Inference Center with SHAP Graphs
-`![Inference Center](docs/screenshots/predict_page.png)` *(Placeholder: Pre-filling legit/fraud sample profiles, risk classification card, and horizontal SHAP bars.)*
-
-### 5. Log History & Slide Panel Explainers
-`![Logs Audit](docs/screenshots/history_page.png)` *(Placeholder: Paginated audit history log list, filtering, and side panel SHAP visualizer.)*
+FastAPI will automatically serve the built bundle from `frontend/dist/` at `http://localhost:8000`.

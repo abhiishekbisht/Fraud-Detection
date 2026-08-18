@@ -1,6 +1,8 @@
 import os
+import json
 import logging
 import joblib
+import datetime
 import pandas as pd
 from typing import Dict, Any
 
@@ -46,11 +48,9 @@ def evaluate_model(model: Any, X_test: pd.DataFrame, y_test: pd.Series) -> Dict[
     
     # Calculate confusion matrix
     cm = confusion_matrix(y_test, y_pred)
-    # Ensure 2x2 shape
     if cm.shape == (2, 2):
         tn, fp, fn, tp = cm.ravel()
     else:
-        # Edge cases where test set might not have both classes (e.g. dummy small test)
         tn, fp, fn, tp = int(cm[0, 0]), 0, 0, 0
         
     return {
@@ -62,16 +62,17 @@ def evaluate_model(model: Any, X_test: pd.DataFrame, y_test: pd.Series) -> Dict[
         "confusion_matrix": [[int(tn), int(fp)], [int(fn), int(tp)]]
     }
 
-def train_models_task(job_id: str, dataset_id: str) -> None:
+def train_models_task(job_id: str, dataset_id: str, session_id: str = "global") -> None:
     """
     Background worker function that trains Logistic Regression, Random Forest, 
     and XGBoost classifiers. Resamples the training data using SMOTE, scales 
     features, logs status updates, and stores evaluation outputs.
+    Saves a companion metadata.json containing feature engineering parameters.
     """
     try:
         # 1. Update job status in database to 'running'
         update_job_status(job_id, "running")
-        logger.info(f"Starting training job {job_id} on dataset {dataset_id}")
+        logger.info(f"Starting training job {job_id} on dataset {dataset_id} for session {session_id}")
 
         # 2. Retrieve dataset from data manager
         df = data_manager.get_dataset(dataset_id)
@@ -80,6 +81,29 @@ def train_models_task(job_id: str, dataset_id: str) -> None:
         job_dir = os.path.join("data", "models", job_id)
         os.makedirs(job_dir, exist_ok=True)
         scaler_path = os.path.join(job_dir, "scaler.joblib")
+
+        # Save feature engineering metadata (mean amount, IQR outlier bounds)
+        mean_amt = 0.0
+        lower_bound = 0.0
+        upper_bound = 0.0
+        if "Amount" in df.columns:
+            mean_amt = float(df["Amount"].fillna(0).mean())
+            q1 = df["Amount"].quantile(0.25)
+            q3 = df["Amount"].quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = float(q1 - 1.5 * iqr)
+            upper_bound = float(q3 + 1.5 * iqr)
+            
+        metadata = {
+            "mean_amount": mean_amt,
+            "lower_bound": lower_bound,
+            "upper_bound": upper_bound,
+            "session_id": session_id,
+            "dataset_id": dataset_id,
+            "created_at": datetime.datetime.now(datetime.UTC).isoformat()
+        }
+        with open(os.path.join(job_dir, "metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=2)
 
         # 4. Perform preprocessing (Splitting, Scaling, Resampling)
         X_train_res, y_train_res, X_test_scaled, y_test = preprocess_dataset(
@@ -123,7 +147,8 @@ def train_models_task(job_id: str, dataset_id: str) -> None:
                 name=model_name,
                 metrics=metrics,
                 model_path=model_path,
-                scaler_path=scaler_path
+                scaler_path=scaler_path,
+                session_id=session_id
             )
 
         # 7. Update status to 'done' on success
@@ -132,5 +157,4 @@ def train_models_task(job_id: str, dataset_id: str) -> None:
 
     except Exception as e:
         logger.error(f"Training job {job_id} failed: {str(e)}", exc_info=True)
-        # Update status to 'failed' and store error logs
         update_job_status(job_id, "failed", error_message=str(e))

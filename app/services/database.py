@@ -33,7 +33,8 @@ def init_db():
                 filename TEXT NOT NULL,
                 row_count INTEGER NOT NULL,
                 upload_time TEXT NOT NULL,
-                status TEXT NOT NULL
+                status TEXT NOT NULL,
+                session_id TEXT DEFAULT 'global'
             )
         """)
         cursor.execute("""
@@ -56,6 +57,7 @@ def init_db():
                 error_message TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
+                session_id TEXT DEFAULT 'global',
                 FOREIGN KEY(dataset_id) REFERENCES datasets(id)
             )
         """)
@@ -75,6 +77,7 @@ def init_db():
                 scaler_path TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 is_active INTEGER DEFAULT 0,
+                session_id TEXT DEFAULT 'global',
                 FOREIGN KEY(job_id) REFERENCES training_jobs(id)
             )
         """)
@@ -86,16 +89,30 @@ def init_db():
                 input_summary TEXT NOT NULL,
                 output TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
+                session_id TEXT DEFAULT 'global',
                 FOREIGN KEY(model_id) REFERENCES models(id)
             )
         """)
+        
+        # Safe migration: add session_id and is_active columns if tables already existed
+        for table in ["datasets", "training_jobs", "models", "predictions"]:
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN session_id TEXT DEFAULT 'global'")
+            except sqlite3.OperationalError:
+                pass
         try:
             cursor.execute("ALTER TABLE models ADD COLUMN is_active INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass
         conn.commit()
 
-def save_dataset_metadata(dataset_id: str, filename: str, row_count: int, status: str = "valid") -> None:
+def save_dataset_metadata(
+    dataset_id: str, 
+    filename: str, 
+    row_count: int, 
+    status: str = "valid", 
+    session_id: str = "global"
+) -> None:
     """
     Saves dataset metadata to the datasets SQLite table.
     """
@@ -104,9 +121,9 @@ def save_dataset_metadata(dataset_id: str, filename: str, row_count: int, status
         cursor = conn.cursor()
         upload_time = datetime.datetime.now(datetime.UTC).isoformat()
         cursor.execute("""
-            INSERT INTO datasets (id, filename, row_count, upload_time, status)
-            VALUES (?, ?, ?, ?, ?)
-        """, (dataset_id, filename, row_count, upload_time, status))
+            INSERT INTO datasets (id, filename, row_count, upload_time, status, session_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (dataset_id, filename, row_count, upload_time, status, session_id))
         conn.commit()
 
 def save_cleaning_report(
@@ -186,7 +203,7 @@ def delete_dataset_metadata(dataset_id: str) -> None:
         cursor.execute("DELETE FROM training_jobs WHERE dataset_id = ?", (dataset_id,))
         conn.commit()
 
-def create_training_job(job_id: str, dataset_id: str) -> None:
+def create_training_job(job_id: str, dataset_id: str, session_id: str = "global") -> None:
     """
     Registers a new training job in SQLite database in 'queued' status.
     """
@@ -195,9 +212,9 @@ def create_training_job(job_id: str, dataset_id: str) -> None:
         cursor = conn.cursor()
         now_str = datetime.datetime.now(datetime.UTC).isoformat()
         cursor.execute("""
-            INSERT INTO training_jobs (id, dataset_id, status, error_message, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (job_id, dataset_id, "queued", None, now_str, now_str))
+            INSERT INTO training_jobs (id, dataset_id, status, error_message, created_at, updated_at, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, dataset_id, "queued", None, now_str, now_str, session_id))
         conn.commit()
 
 def update_job_status(job_id: str, status: str, error_message: Optional[str] = None) -> None:
@@ -221,7 +238,8 @@ def save_trained_model(
     name: str, 
     metrics: Dict[str, Any], 
     model_path: str, 
-    scaler_path: str
+    scaler_path: str,
+    session_id: str = "global"
 ) -> None:
     """
     Saves metrics and artifact paths of a trained model.
@@ -233,8 +251,8 @@ def save_trained_model(
         now_str = datetime.datetime.now(datetime.UTC).isoformat()
         cursor.execute("""
             INSERT INTO models (
-                id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active, session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             model_id,
             job_id,
@@ -249,7 +267,8 @@ def save_trained_model(
             model_path,
             scaler_path,
             now_str,
-            0
+            0,
+            session_id
         ))
         conn.commit()
 
@@ -287,19 +306,20 @@ def get_training_job(job_id: str) -> Optional[Dict[str, Any]]:
             
         return job_dict
 
-def list_all_models() -> list:
+def list_all_models(session_id: str = "global") -> list:
     """
-    Returns all trained models sorted by pr_auc descending.
+    Returns all trained models for the specified session sorted by pr_auc descending.
     """
     init_db()
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
+            SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active, session_id
             FROM models
+            WHERE session_id = ?
             ORDER BY pr_auc DESC
-        """)
+        """, (session_id,))
         rows = cursor.fetchall()
         models_list = []
         for r in rows:
@@ -309,41 +329,41 @@ def list_all_models() -> list:
             models_list.append(m_dict)
         return models_list
 
-def activate_model(model_id: str) -> bool:
+def activate_model(model_id: str, session_id: str = "global") -> bool:
     """
-    Sets is_active=1 for the specified model_id and is_active=0 for all other models.
-    Returns True if model was activated, False if model_id was not found.
+    Sets is_active=1 for the specified model_id and is_active=0 for all other models of that session.
+    Returns True if model was activated, False if model_id was not found or session mismatch.
     """
     init_db()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Check if model exists
-        cursor.execute("SELECT 1 FROM models WHERE id = ?", (model_id,))
+        # Check if model exists and matches session
+        cursor.execute("SELECT 1 FROM models WHERE id = ? AND session_id = ?", (model_id, session_id))
         if cursor.fetchone() is None:
             return False
             
-        # Deactivate all models
-        cursor.execute("UPDATE models SET is_active = 0")
+        # Deactivate all models for this session
+        cursor.execute("UPDATE models SET is_active = 0 WHERE session_id = ?", (session_id,))
         # Activate the target model
-        cursor.execute("UPDATE models SET is_active = 1 WHERE id = ?", (model_id,))
+        cursor.execute("UPDATE models SET is_active = 1 WHERE id = ? AND session_id = ?", (model_id, session_id))
         conn.commit()
         return True
 
-def get_active_model() -> Optional[Dict[str, Any]]:
+def get_active_model(session_id: str = "global") -> Optional[Dict[str, Any]]:
     """
-    Retrieves the currently active model run details.
+    Retrieves the currently active model run details for the session.
     """
     init_db()
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active
+            SELECT id as model_id, job_id, dataset_id, name, precision, recall, f1_score, roc_auc, pr_auc, confusion_matrix, model_path, scaler_path, created_at, is_active, session_id
             FROM models
-            WHERE is_active = 1
+            WHERE is_active = 1 AND session_id = ?
             LIMIT 1
-        """)
+        """, (session_id,))
         row = cursor.fetchone()
         
     if row is None:
@@ -357,7 +377,8 @@ def save_prediction(
     model_id: str,
     prediction_type: str,
     input_summary: Dict[str, Any],
-    output: Dict[str, Any]
+    output: Dict[str, Any],
+    session_id: str = "global"
 ) -> str:
     """
     Logs a prediction run to the SQLite predictions table.
@@ -370,15 +391,16 @@ def save_prediction(
         prediction_id = str(uuid.uuid4())
         now_str = datetime.datetime.now(datetime.UTC).isoformat()
         cursor.execute("""
-            INSERT INTO predictions (id, model_id, prediction_type, input_summary, output, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO predictions (id, model_id, prediction_type, input_summary, output, timestamp, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             prediction_id,
             model_id,
             prediction_type,
             json.dumps(input_summary),
             json.dumps(output),
-            now_str
+            now_str,
+            session_id
         ))
         conn.commit()
         return prediction_id
@@ -424,18 +446,19 @@ def get_prediction_history(
     limit: int = 10,
     risk_label: Optional[str] = None,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    session_id: str = "global"
 ) -> Dict[str, Any]:
     """
-    Queries paginated prediction history from SQLite with dynamic filtering.
+    Queries paginated prediction history from SQLite with dynamic filtering and session scoping.
     """
     init_db()
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        where_clauses = []
-        params = []
+        where_clauses = ["session_id = ?"]
+        params = [session_id]
         
         if risk_label:
             where_clauses.append("json_extract(output, '$.risk_label') = ?")
@@ -449,9 +472,7 @@ def get_prediction_history(
             where_clauses.append("timestamp <= ?")
             params.append(end_date)
             
-        where_str = ""
-        if where_clauses:
-            where_str = "WHERE " + " AND ".join(where_clauses)
+        where_str = "WHERE " + " AND ".join(where_clauses)
             
         # Get total count
         count_query = f"SELECT COUNT(*) FROM predictions {where_str}"
@@ -486,20 +507,20 @@ def get_prediction_history(
             "total_pages": total_pages
         }
 
-def list_cleaned_datasets() -> list:
+def list_cleaned_datasets(session_id: str = "global") -> list:
     """
-    Returns all datasets that have successfully finished the cleaning stage.
+    Returns all datasets for the specified session that have successfully finished the cleaning stage.
     """
     init_db()
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT d.id, d.filename, d.row_count, c.cleaned_at
+            SELECT d.id, d.filename, d.row_count, c.cleaned_at, d.session_id
             FROM datasets d
             JOIN cleaning_reports c ON d.id = c.dataset_id
+            WHERE d.session_id = ?
             ORDER BY c.cleaned_at DESC
-        """)
+        """, (session_id,))
         rows = cursor.fetchall()
         return [dict(r) for r in rows]
-

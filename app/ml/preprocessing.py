@@ -19,20 +19,16 @@ def preprocess_dataset(
     scales numeric features with StandardScaler (fitted only on train), and
     applies SMOTE to the training set only (leaving the test set untouched).
     Saves the fitted scaler as a joblib artifact.
-
-    Returns:
-        X_train_res: Balanced, scaled training features DataFrame
-        y_train_res: Balanced training target labels Series
-        X_test_scaled: Scaled test features DataFrame
-        y_test: Unchanged test target labels Series
     """
-    # 1. Define feature columns (Time, Amount, V1-V28)
-    feature_cols = ["Time", "Amount"] + [f"V{i}" for i in range(1, 29)]
+    standard_cols = ["Time", "Amount"] + [f"V{i}" for i in range(1, 29)]
+    engineered_cols = ["HourOfDay", "Hour_Sin", "Hour_Cos", "LogAmount", "Amount_to_Mean_Ratio", "Amount_outlier"]
     
-    # Ensure all required features and target are present in the dataframe
-    missing_cols = [col for col in feature_cols + [target_col] if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Dataset is missing required columns for preprocessing: {missing_cols}")
+    # Filter features that exist in the dataframe
+    all_possible = standard_cols + engineered_cols
+    feature_cols = [col for col in all_possible if col in df.columns]
+
+    if not feature_cols:
+        raise ValueError(f"Dataset does not contain any required feature columns.")
 
     X = df[feature_cols].copy()
     y = df[target_col].copy()

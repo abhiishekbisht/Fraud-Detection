@@ -1,0 +1,7 @@
+{
+  "css.customData": [".vscode/tailwind.json"],
+  "css.validate": true,
+  "editor.formatOnSave": true,
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
