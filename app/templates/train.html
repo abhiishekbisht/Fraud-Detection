@@ -262,7 +262,13 @@
                     // Populate comparison table
                     models.forEach(m => {
                         const activeBadge = m.is_active 
-                            ? `<span class="px-2 py-0.5 bg-green-950/60 text-green-400 border border-green-800/50 rounded-md font-semibold text-[10px]"><i class="fa-solid fa-circle-check mr-1"></i>Active</span>`
+                            ? `<span class="inline-flex items-center px-2 py-0.5 bg-green-950/60 text-green-400 border border-green-800/50 rounded-md font-semibold text-[10px]">
+                                 <span class="relative flex h-1.5 w-1.5 mr-1.5">
+                                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                     <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+                                 </span>
+                                 Active
+                               </span>`
                             : `<button class="activate-btn px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-md border border-zinc-750 hover:border-zinc-600 transition-all" data-id="${m.model_id}">Activate</button>`;
                         
                         // Human readable model name mapping
