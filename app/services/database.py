@@ -107,3 +107,15 @@ def get_cleaning_report(dataset_id: str) -> Optional[Dict[str, Any]]:
         "outliers_flagged": row[4],
         "cleaned_at": row[5]
     }
+
+def dataset_exists(dataset_id: str) -> bool:
+    """
+    Checks if a dataset metadata record exists in the datasets table.
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM datasets WHERE id = ?", (dataset_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None

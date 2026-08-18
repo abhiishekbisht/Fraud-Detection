@@ -109,8 +109,23 @@ def test_eda_api_endpoint():
     """
     Tests the FastAPI GET /eda/{dataset_id} endpoint.
     """
+    from app.services.database import save_cleaning_report, save_dataset_metadata
+    
     dataset_id = "test_creditcard_dataset"
     df = generate_synthetic_dataset(n_samples=200, fraud_ratio=0.1)
+    
+    # Save a mock dataset record to datasets table
+    save_dataset_metadata(dataset_id, "mock_creditcard.csv", 200, "valid")
+    
+    # Save a mock cleaning report to SQLite to satisfy the "must be cleaned" check
+    save_cleaning_report(
+        dataset_id=dataset_id,
+        rows_before=200,
+        rows_after=200,
+        duplicates_removed=0,
+        missing_value_summary={},
+        outliers_flagged=0
+    )
     
     # Register dataset directly into data manager
     data_manager.register_dataset(dataset_id, df)
@@ -145,6 +160,33 @@ def test_eda_api_endpoint():
     assert len(data["top_features"]) == 10
     assert data["top_features"][0]["feature"] == "V17"
     assert data["top_features"][0]["mean_difference"] > 7.0
+    
+    # Clean up database and data manager cache
+    data_manager.delete_dataset(dataset_id)
+
+
+def test_eda_api_endpoint_uncleaned():
+    """
+    Tests GET /eda/{dataset_id} on an uncleaned dataset. Should yield a 400 Bad Request error.
+    """
+    from app.services.database import save_dataset_metadata
+    
+    dataset_id = "uncleaned_dataset"
+    df = generate_synthetic_dataset(n_samples=100, fraud_ratio=0.1)
+    
+    # Save a mock dataset record to datasets table
+    save_dataset_metadata(dataset_id, "mock_uncleaned.csv", 100, "valid")
+    
+    # Register dataset directly, but do NOT write a cleaning report to SQLite
+    data_manager.register_dataset(dataset_id, df)
+    
+    # Query eda endpoint
+    response = client.get(f"/eda/{dataset_id}")
+    assert response.status_code == 400
+    assert "has not been cleaned" in response.json()["detail"].lower()
+    
+    # Clean up
+    data_manager.delete_dataset(dataset_id)
 
 
 def test_eda_api_endpoint_not_found():
