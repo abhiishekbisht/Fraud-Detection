@@ -6,6 +6,7 @@ from app.services.database import init_db
 from app.routers.upload import router as upload_router
 from app.routers.cleaning import router as cleaning_router
 from app.routers.eda import router as eda_router
+from app.routers.train import router as train_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(upload_router)
 app.include_router(cleaning_router)
 app.include_router(eda_router)
+app.include_router(train_router)
 
 @app.get("/health")
 def health_check():

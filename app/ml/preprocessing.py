@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from typing import Tuple
+from typing import Tuple, Optional
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
@@ -11,7 +11,8 @@ MODELS_DIR = "data/models"
 def preprocess_dataset(
     df: pd.DataFrame, 
     dataset_id: str, 
-    target_col: str = "Class"
+    target_col: str = "Class",
+    scaler_path: Optional[str] = None
 ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
     """
     Takes a cleaned dataset DataFrame, does a stratified train/test split (80/20, stratify on target_col),
@@ -53,8 +54,14 @@ def preprocess_dataset(
     X_test_scaled = pd.DataFrame(X_test_scaled_arr, columns=feature_cols, index=X_test.index)
 
     # 4. Save fitted scaler as an artifact
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    scaler_path = os.path.join(MODELS_DIR, f"{dataset_id}_scaler.joblib")
+    if scaler_path is None:
+        os.makedirs(MODELS_DIR, exist_ok=True)
+        scaler_path = os.path.join(MODELS_DIR, f"{dataset_id}_scaler.joblib")
+    else:
+        scaler_parent_dir = os.path.dirname(scaler_path)
+        if scaler_parent_dir:
+            os.makedirs(scaler_parent_dir, exist_ok=True)
+            
     joblib.dump(scaler, scaler_path)
 
     # 5. Apply SMOTE resampler to the training set only
