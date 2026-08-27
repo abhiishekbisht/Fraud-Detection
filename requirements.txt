@@ -5,8 +5,5 @@ numpy
 scikit-learn
 imbalanced-learn
 xgboost
-shap
 python-multipart
-pytest
-httpx
-jinja2
+joblib

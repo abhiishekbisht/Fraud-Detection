@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/main.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/health",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/cleaned-datasets",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/upload(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/eda(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/train(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/predict(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/reset",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/downloads(.*)",
+      "dest": "app/main.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
+    }
+  ]
+}
