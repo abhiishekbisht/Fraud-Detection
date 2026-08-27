@@ -79,3 +79,39 @@ def test_upload_size_limit(monkeypatch):
     response = client.post("/upload", files=files)
     assert response.status_code == 400
     assert "file size exceeds" in response.json()["detail"].lower()
+
+def test_session_isolation_and_auto_reset():
+    session_a = "test_session_user_a"
+    session_b = "test_session_user_b"
+    csv_bytes = create_valid_csv_bytes()
+    
+    # 1. Upload in Session A
+    files = {"file": ("dataset_a.csv", csv_bytes, "text/csv")}
+    resp_a = client.post("/upload", files=files, headers={"X-Session-ID": session_a})
+    assert resp_a.status_code == 200
+    dataset_id = resp_a.json()["dataset_id"]
+    
+    # 2. Check Session A sees dataset
+    list_a = client.get("/api/upload/cleaned-datasets", headers={"X-Session-ID": session_a}).json()
+    assert len(list_a) == 1
+    assert list_a[0]["filename"] == "dataset_a.csv"
+    
+    # 3. Check Session B does NOT see Session A's dataset (Session Isolation)
+    list_b = client.get("/api/upload/cleaned-datasets", headers={"X-Session-ID": session_b}).json()
+    assert len(list_b) == 0
+    
+    # 4. Check EDA stats for Session B return empty payload instead of leaking Session A's file
+    eda_b = client.get("/api/eda/stats", headers={"X-Session-ID": session_b}).json()
+    assert eda_b["total_rows"] == 0
+    
+    # 5. Reset Session A
+    reset_resp = client.post("/api/reset", headers={"X-Session-ID": session_a})
+    assert reset_resp.status_code == 200
+    
+    # 6. Verify file is deleted on disk and metadata removed
+    saved_path = f"data/raw/{dataset_id}.csv"
+    assert not os.path.exists(saved_path)
+    
+    list_a_after = client.get("/api/upload/cleaned-datasets", headers={"X-Session-ID": session_a}).json()
+    assert len(list_a_after) == 0
+

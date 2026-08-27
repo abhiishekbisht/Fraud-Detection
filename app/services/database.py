@@ -203,6 +203,43 @@ def delete_dataset_metadata(dataset_id: str) -> None:
         cursor.execute("DELETE FROM training_jobs WHERE dataset_id = ?", (dataset_id,))
         conn.commit()
 
+def purge_session_data(session_id: str) -> List[str]:
+    """
+    Deletes all datasets, models, training jobs, cleaning reports, and prediction records
+    belonging to the specified session_id from SQLite database.
+    """
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM datasets WHERE session_id = ?", (session_id,))
+        dataset_ids = [row[0] for row in cursor.fetchall()]
+        
+        cursor.execute("DELETE FROM predictions WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM models WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM training_jobs WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM cleaning_reports WHERE dataset_id IN (SELECT id FROM datasets WHERE session_id = ?)", (session_id,))
+        cursor.execute("DELETE FROM datasets WHERE session_id = ?", (session_id,))
+        conn.commit()
+        return dataset_ids
+
+def purge_all_datasets() -> List[str]:
+    """
+    Deletes ALL metadata records across all tables in SQLite database.
+    """
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM datasets")
+        dataset_ids = [row[0] for row in cursor.fetchall()]
+        cursor.execute("DELETE FROM predictions")
+        cursor.execute("DELETE FROM models")
+        cursor.execute("DELETE FROM training_jobs")
+        cursor.execute("DELETE FROM cleaning_reports")
+        cursor.execute("DELETE FROM datasets")
+        conn.commit()
+        return dataset_ids
+
+
 def create_training_job(job_id: str, dataset_id: str, session_id: str = "global") -> None:
     """
     Registers a new training job in SQLite database in 'queued' status.

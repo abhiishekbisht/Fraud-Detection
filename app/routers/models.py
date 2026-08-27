@@ -1,17 +1,17 @@
-from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Header
+from typing import List, Dict, Any, Optional
 from app.services.database import list_all_models, activate_model
 
 router = APIRouter(tags=["models"])
 
 @router.get("/models", response_model=List[Dict[str, Any]])
-def get_models() -> List[Dict[str, Any]]:
+def get_models(x_session_id: Optional[str] = Header("global", alias="X-Session-ID")) -> List[Dict[str, Any]]:
     """
-    Returns all trained model runs, complete with evaluation metrics, 
-    dataset reference, and timestamps. Sorted by PR-AUC descending.
+    Returns all trained model runs for the active session sorted by PR-AUC descending.
     """
+    session_id = x_session_id or "global"
     try:
-        models_list = list_all_models()
+        models_list = list_all_models(session_id=session_id)
         return models_list
     except Exception as e:
         raise HTTPException(
@@ -20,13 +20,15 @@ def get_models() -> List[Dict[str, Any]]:
         )
 
 @router.post("/models/{model_id}/activate")
-def activate_model_endpoint(model_id: str) -> Dict[str, Any]:
+def activate_model_endpoint(
+    model_id: str,
+    x_session_id: Optional[str] = Header("global", alias="X-Session-ID")
+) -> Dict[str, Any]:
     """
-    Activates a specific model run. Subsequent single and batch predictions 
-    will automatically load and use this active model.
+    Activates a specific model run for the active session.
     """
-    # Attempt to activate model in SQLite database
-    activated = activate_model(model_id)
+    session_id = x_session_id or "global"
+    activated = activate_model(model_id, session_id=session_id)
     
     if not activated:
         raise HTTPException(
@@ -39,3 +41,4 @@ def activate_model_endpoint(model_id: str) -> Dict[str, Any]:
         "model_id": model_id,
         "is_active": True
     }
+

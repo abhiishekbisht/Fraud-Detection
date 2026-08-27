@@ -88,3 +88,20 @@ npm run build
 ```
 
 FastAPI will automatically serve the built bundle from `frontend/dist/` at `http://localhost:8000`.
+
+---
+
+## 🛡️ Git Security & Data Privacy Policy
+
+To protect sensitive financial transaction data and maintain a clean repository when pushing to GitHub:
+
+| Category | Tracked & Pushed to GitHub | Ignored & Excluded (`.gitignore`) |
+| :--- | :--- | :--- |
+| **Source Code** | `app/`, `frontend/src/`, `tests/` | None |
+| **Configurations** | `package.json`, `requirements.txt`, `vite.config.ts`, `docker-compose.yml`, `Dockerfile`, `.gitignore` | `.env`, `.env.local` (secrets) |
+| **Datasets** | Directory structure via `.gitkeep` | `data/raw/*.csv`, `data/cleaned/*.csv` |
+| **Databases** | None | `fraudlens.db`, `data/metadata.db`, `*.sqlite` |
+| **ML Models** | None (generated locally) | `data/models/*.joblib`, `*.pkl` |
+| **Dependencies** | None | `.venv/`, `node_modules/`, `frontend/node_modules/` |
+| **Builds** | None | `dist/`, `frontend/dist/`, `__pycache__/`, `.pytest_cache/` |
+

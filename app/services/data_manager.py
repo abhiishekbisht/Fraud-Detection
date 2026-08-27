@@ -59,5 +59,31 @@ class DataManager:
                 except OSError:
                     pass
 
+    def purge_datasets(self, dataset_ids: list) -> None:
+        """
+        Purges multiple datasets from memory and disk.
+        """
+        for did in dataset_ids:
+            self.delete_dataset(did)
+
+    def purge_all(self) -> None:
+        """
+        Clears all in-memory datasets and purges raw, cleaned, and model directories.
+        """
+        self._datasets.clear()
+        import shutil
+        for folder in [self.raw_dir, self.cleaned_dir, "data/models"]:
+            if os.path.exists(folder):
+                for item in os.listdir(folder):
+                    item_path = os.path.join(folder, item)
+                    try:
+                        if os.path.isfile(item_path) or os.path.islink(item_path):
+                            os.remove(item_path)
+                        elif os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                    except Exception:
+                        pass
+
 # Singleton instance for application-wide use
 data_manager = DataManager()
+

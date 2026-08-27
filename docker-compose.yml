@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  fraudlens:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fraudlens:latest
+    container_name: fraudlens_app
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - fraudlens_data:/app/data
+      - fraudlens_models:/app/models
+    restart: unless-stopped
+
+volumes:
+  fraudlens_data:
+  fraudlens_models:
