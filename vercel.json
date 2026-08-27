@@ -1,58 +1,40 @@
 {
-  "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "app/main.py",
-      "use": "@vercel/python"
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "app/main.py"
+      "source": "/health",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/health",
-      "dest": "app/main.py"
+      "source": "/cleaned-datasets",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/cleaned-datasets",
-      "dest": "app/main.py"
+      "source": "/upload(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/upload(.*)",
-      "dest": "app/main.py"
+      "source": "/eda(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/eda(.*)",
-      "dest": "app/main.py"
+      "source": "/train(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/train(.*)",
-      "dest": "app/main.py"
+      "source": "/predict(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/predict(.*)",
-      "dest": "app/main.py"
+      "source": "/reset",
+      "destination": "/api/index.py"
     },
     {
-      "src": "/reset",
-      "dest": "app/main.py"
-    },
-    {
-      "src": "/downloads(.*)",
-      "dest": "app/main.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
+      "source": "/downloads(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
