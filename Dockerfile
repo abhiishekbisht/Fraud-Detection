@@ -2,8 +2,8 @@
 FROM node:18-alpine AS frontend-builder
 
 WORKDIR /frontend
-COPY frontend/package*.json ./
-RUN npm install
+COPY frontend/package*.json frontend/.npmrc* ./
+RUN npm install --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 
@@ -27,18 +27,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code
+# Copy backend source code
 COPY app /app/app
 
 # Copy built frontend SPA assets from stage 1
 COPY --from=frontend-builder /frontend/dist /app/frontend/dist
 
-# Create folders for SQLite database, datasets, and ML model artifacts
-RUN mkdir -p /app/data /app/data/raw /app/data/cleaned /app/models
+# Create runtime directories for SQLite, datasets, and ML model artifacts
+RUN mkdir -p /app/data/raw /app/data/cleaned /app/data/models
 
 # Expose port
 EXPOSE 8000
 
-# Command to run application
+# Run FastAPI via uvicorn
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
-
